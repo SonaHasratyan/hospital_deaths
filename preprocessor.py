@@ -15,14 +15,14 @@ class Preprocessor:
         df = pd.read_csv("hospital_deaths_train.csv")
 
         # Just in case checking whether there are any data points with null labels, if so, remove them
-        if df["In-hospital_death"].isnull().sum() != 0:
+        if df["In-hospital_death"].isna().sum() != 0:
             df.dropna(subset=["In-hospital_death"], inplace=True)
 
         self.y = df["In-hospital_death"]
 
         df = df.drop("In-hospital_death", axis=1)
 
-        nans_percentage = (df.isnull().sum() * 100) / len(df)
+        nans_percentage = (df.isna().sum() * 100) / len(df)
         columns_with_nans_statistics = pd.DataFrame(
             {"columns": df.columns, "nans_percentage": nans_percentage}
         )
@@ -48,7 +48,7 @@ class Preprocessor:
 
         df.fillna(df.mean(), inplace=True)
         print(
-            f"Are there left any columns with null values? - {any((df.isnull().sum() * 100) / len(df) > 0)}"
+            f"Are there left any columns with null values? - {any((df.isna().sum() * 100) / len(df) > 0)}"
         )
 
         self.X = df.values
