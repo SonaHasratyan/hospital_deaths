@@ -11,6 +11,8 @@ class Preprocessor:
     All the preprocessing stages are done here - filling nans, scaling, feature extraction etc.
     """
 
+    NANS_THRESHOLD = 60
+
     def __init__(self):
         self.X = None
         self.y = None
@@ -32,61 +34,45 @@ class Preprocessor:
         self.y = df["In-hospital_death"]
         self.X = df.drop("In-hospital_death", axis=1)
 
+        # todo: the train test separation should come from run file
         self.X_train, self.X_val, self.y_train, self.y_val = train_test_split(
             self.X, self.y, test_size=0.2, random_state=self.random_state
         )
 
-        self.X_train, self.y_train = self.__fill_nans(
-            self.X_train, self.y_train, is_train=True
-        )
-        self.X_val, self.y_val = self.__fill_nans(self.X_val, self.y_val)
-
-        self.X_train = self.__scale(self.X_train, is_train=True)
-        self.X_val = self.__scale(self.X_val)
+        self.__set_features_to_drop(self.X_train)
 
     def transform(self):
-        pass
+        self.X_train, self.y_train = self.__regularize_data(self.X_train, self.y_train)
+        self.X_val, self.y_val = self.__regularize_data(self.X_val, self.y_val)
 
-    def __fill_nans(self, X, y, is_train=False):
+        self.__anomaly_detection(self.X_train)
+
+        # scaler can't be set in fit method cos' we are dropping some features in transform set
+        self.__set_scaler(self.X_train)
+        self.X_train = self.scaler.transform(self.X_train)
+        self.X_val = self.scaler.transform(self.X_val)
+
+    def __regularize_data(self, X, y):
         """
-        removing data point which have nan labels
-        removing those columns which include over 70% nans
+        removing data points which have nan labels
+        removing those columns which include over NANS_THRESHOLD % nans
         filling nans
         setting X, y
         """
 
+        print(
+            f"Number of columns BEFORE dropping columns with > {self.NANS_THRESHOLD}% nan values: {len(X.columns)}"
+        )
+
         # TODO: discuss whether we should drop recordid or not
         X = X.drop("recordid", axis=1)
-
-        if is_train:
-            print("-----TRAIN CASE-----")
-            nans_percentage = (X.isna().sum() * 100) / len(X)
-            columns_with_nans_statistics = pd.DataFrame(
-                {"columns": X.columns, "nans_percentage": nans_percentage}
-            )
-            columns_with_nans_statistics.sort_values("nans_percentage", inplace=True)
-
-            print(
-                f'Number of columns including nans: {len(columns_with_nans_statistics[columns_with_nans_statistics["nans_percentage"] > 0])}'
-            )
-            # print(columns_with_nans_statistics[columns_with_nans_statistics["nans_percentage"] > 70]["columns"])
-
-            self.features_to_drop = columns_with_nans_statistics[
-                columns_with_nans_statistics["nans_percentage"] > 70
-            ]["columns"]
-        else:
-            print("-----VALIDATION/TEST CASE-----")
-
-        print(
-            f"Number of columns BEFORE dropping columns with > 70% nan values: {len(X.columns)}"
-        )
 
         X = X.drop(
             self.features_to_drop,
             axis=1,
         )
         print(
-            f"Number of columns AFTER dropping columns with > 70% nan values: {len(X.columns)}"
+            f"Number of columns AFTER dropping columns with > {self.NANS_THRESHOLD}% nan values: {len(X.columns)}"
         )
 
         X.fillna(X.mean(), inplace=True)
@@ -99,15 +85,36 @@ class Preprocessor:
 
         return X, y
 
-    def __scale(self, X, is_train=False):
-        if is_train:
-            self.scaler = MinMaxScaler()
-            self.scaler.fit(X)
+    def __set_features_to_drop(self, X):
+        nans_percentage = (X.isna().sum() * 100) / len(X)
+        columns_with_nans_statistics = pd.DataFrame(
+            {"columns": X.columns, "nans_percentage": nans_percentage}
+        )
+        columns_with_nans_statistics.sort_values("nans_percentage", inplace=True)
 
-        X = self.scaler.transform(X)
+        print(
+            f'Number of columns including nans: '
+            f'{len(columns_with_nans_statistics[columns_with_nans_statistics["nans_percentage"] > 0])}'
+        )
+        # print(
+        #     columns_with_nans_statistics[
+        #         columns_with_nans_statistics["nans_percentage"] > self.NANS_THRESHOLD
+        #     ]["columns"]
+        # )
 
-        return X
+        self.features_to_drop = columns_with_nans_statistics[
+            columns_with_nans_statistics["nans_percentage"] > self.NANS_THRESHOLD
+        ]["columns"]
+
+    def __set_scaler(self, X):
+        self.scaler = MinMaxScaler()
+        self.scaler.fit(X)
+
+    def __anomaly_detection(self, X_train):
+        # TODO
+        pass
 
 
-# TODO: close this v
-Preprocessor().fit()
+preprocessor = Preprocessor()
+preprocessor.fit()
+preprocessor.transform()
