@@ -22,48 +22,53 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 from sklearn.preprocessing import StandardScaler
 from sklearn.preprocessing import MinMaxScaler
 import warnings
-from warnings import filterwarnings 
-warnings.filterwarnings("ignore", category=DeprecationWarning) 
+from warnings import filterwarnings
+
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 filterwarnings('ignore')
 from sklearn.neighbors import KNeighborsRegressor
 from sklearn.model_selection import GridSearchCV
 
-df = pd.read_excel('hospital_deaths_train.xlsx')
+df = pd.read_csv('hospital_deaths_train.csv')
 
+
+# todo: delete this file
 selected_feat = ['Age', 'Albumin_first', 'Albumin_last', 'BUN_last', 'Bilirubin_last',
-       'CCU', 'CSRU', 'FiO2_first', 'FiO2_last', 'GCS_highest', 'GCS_last',
-       'GCS_lowest', 'GCS_median', 'Glucose_last', 'HCO3_last', 'HR_highest',
-       'HR_last', 'HR_median', 'Lactate_last', 'MechVentLast8Hour',
-       'MechVentStartTime', 'NIDiasABP_lowest', 'NIDiasABP_median',
-       'NISysABP_last', 'PaCO2_first', 'PaO2_first', 'SICU', 'Temp_first',
-       'Temp_last', 'Temp_lowest', 'Temp_median', 'WBC_last', 'Weight']
+                 'CCU', 'CSRU', 'FiO2_first', 'FiO2_last', 'GCS_highest', 'GCS_last',
+                 'GCS_lowest', 'GCS_median', 'Glucose_last', 'HCO3_last', 'HR_highest',
+                 'HR_last', 'HR_median', 'Lactate_last', 'MechVentLast8Hour',
+                 'MechVentStartTime', 'NIDiasABP_lowest', 'NIDiasABP_median',
+                 'NISysABP_last', 'PaCO2_first', 'PaO2_first', 'SICU', 'Temp_first',
+                 'Temp_last', 'Temp_lowest', 'Temp_median', 'WBC_last', 'Weight']
+
 
 def preprocess_data(df):
-    #drop columns with 60% nulls
-    a = (df.isnull().sum()/df.shape[0]*100).sort_values(ascending =False)
-    col_to_drop = a[(a)>60].keys()
-    output_df = df.drop(col_to_drop, axis=1) 
-    
-    #fill missing values with medians
+    # drop columns with 60% nulls
+    a = (df.isnull().sum() / df.shape[0] * 100).sort_values(ascending=False)
+    col_to_drop = a[(a) > 60].keys()
+    output_df = df.drop(col_to_drop, axis=1)
+
+    # fill missing values with medians
     median_dict = output_df.median()
     for col in output_df.columns:
-      median_value = median_dict[col]
-      output_df[col].fillna(median_value, inplace=True)
+        median_value = median_dict[col]
+        output_df[col].fillna(median_value, inplace=True)
 
-    #splitting data
+    # splitting data
     xTrain, xTest, yTrain, yTest = train_test_split(output_df[output_df.columns.difference(['In-hospital_death'])],
-                                                output_df['In-hospital_death'], test_size=0.2, random_state=10,stratify=output_df['In-hospital_death'])
+                                                    output_df['In-hospital_death'], test_size=0.2, random_state=10,
+                                                    stratify=output_df['In-hospital_death'])
 
-
-    #scaling
-    scaler = MinMaxScaler().fit(xTrain[xTrain.columns])  
+    # scaling
+    scaler = MinMaxScaler().fit(xTrain[xTrain.columns])
     xTrain[xTrain.columns] = scaler.transform(xTrain[xTrain.columns])
     xTest[xTest.columns] = scaler.transform(xTest[xTest.columns])
 
     xTrain = xTrain[selected_feat]
-    xTest = xTest[selected_feat] 
-  
-    return xTrain , xTest ,yTrain , yTest
+    xTest = xTest[selected_feat]
+
+    return xTrain, xTest, yTrain, yTest
+
 
 xTrain = preprocess_data(df)[0]
 xTest = preprocess_data(df)[1]
@@ -84,7 +89,7 @@ yTest = preprocess_data(df)[3]
 #     return test
 
 knn = KNeighborsClassifier()
-param_grid = {'n_neighbors': [1,2,3, 5, 7,10,15,20,25,30], 'weights': ['uniform', 'distance']}
+param_grid = {'n_neighbors': [1, 2, 3, 5, 7, 10, 15, 20, 25, 30], 'weights': ['uniform', 'distance']}
 
 # Perform Grid Search with cross-validation
 grid_search = GridSearchCV(knn, param_grid, cv=5)
@@ -107,15 +112,4 @@ y_pred = knn_best.predict(xTest)
 accuracy = accuracy_score(yTest, y_pred)
 print('Accuracy:', accuracy)
 
-best_params
-
-!ssh-keygen -t rsa -b 4096
-
-!ssh-keyscan -t rsa github.com >> ~/.ssh/known_hosts
-
-!cat /root/.ssh/id_rsa.pub
-
-!ssh -T git@github.com
-
-!git config --global user.email "alisadavtyan7@gmail.com"
-!git config --global user.name "AlisaDavtyan"
+print(best_params)

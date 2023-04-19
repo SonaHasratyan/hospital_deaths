@@ -4,10 +4,20 @@ import matplotlib.pyplot as plt
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split
 from sklearn.inspection import permutation_importance
-
+from sklearn.linear_model import Lasso
+from sklearn.feature_selection import SelectFromModel
+from sklearn.model_selection import GridSearchCV
+from sklearn.metrics import (
+    accuracy_score,
+    confusion_matrix,
+    mean_squared_error,
+    mean_absolute_error,
+    r2_score,
+)
 
 # https://scikit-learn.org/stable/auto_examples/ensemble/plot_forest_importances.html
 from sklearn.ensemble import RandomForestClassifier
+
 
 # import pickle
 
@@ -29,6 +39,8 @@ class Preprocessor:
         self.features_to_drop = None
         self.scaler = None
         self.features = None
+        self.lasso_selected_features = None
+
         self.random_state = 78
 
     def fit(self):
@@ -43,22 +55,27 @@ class Preprocessor:
 
         # todo: the train test separation should come from run file
         self.X_train, self.X_val, self.y_train, self.y_val = train_test_split(
-            self.X, self.y, test_size=0.2, random_state=self.random_state
+            self.X,
+            self.y,
+            test_size=0.2,
+            random_state=self.random_state,
+            stratify=self.y,
         )
 
         self.__set_features_to_drop(self.X_train)
 
     def transform(self):
-        self.X_train, self.y_train = self.__regularize_data(self.X_train, self.y_train)
+        self.X_train, self.y_train = self.__regularize_data(self.X_train, self.y_train, is_train=True)
         self.X_val, self.y_val = self.__regularize_data(self.X_val, self.y_val)
 
-        self.__feature_selection_mdi()
-        self.__feature_selection_permutation()
-        print(
-            set(self.features_mdi.keys()).intersection(
-                set(self.features_permutation.keys())
-            )
-        )
+        # todo: move to model
+        # self.__feature_selection_mdi()
+        # self.__feature_selection_permutation()
+        # print(
+        #     set(self.features_mdi.keys()).intersection(
+        #         set(self.features_permutation.keys())
+        #     )
+        # )
 
         self.X_train, self.y_train = self.X_train.values, self.y_train.values
         self.X_val, self.y_val = self.X_val.values, self.y_val.values
@@ -70,7 +87,7 @@ class Preprocessor:
         self.X_train = self.scaler.transform(self.X_train)
         self.X_val = self.scaler.transform(self.X_val)
 
-    def __regularize_data(self, X, y):
+    def __regularize_data(self, X, y, is_train=False):
         """
         removing data points which have nan labels
         removing those columns which include over NANS_THRESHOLD % nans
@@ -78,12 +95,27 @@ class Preprocessor:
         setting X, y
         """
 
+        # supposed that weight and height are not correlated with any of other features, so fill Nan
+        # values of them with random values from corresponding ranges
+        #
+        X["Weight"] = X["Weight"].fillna(
+            pd.Series(np.random.randint(50, 100, size=len(X)))
+        )
+        # X['Weight_last'] = X['Weight_last'].fillna(pd.Series(np.random.randint(50, 100, size=len(X))))
+
+        # anomaly detection
+        X["Height"] = X["Height"].replace(X["Height"][X["Height"] > 250].index, np.nan)
+        X["Height"] = X["Height"].fillna(
+            pd.Series(np.random.randint(100, 210, size=len(X)))
+        )
+        # a few Nan values ...
+        X["Gender"] = X["Gender"].apply(
+            lambda x: np.random.choice([1, 0], p=[0.5, 0.5]) if pd.isnull(x) else x
+        )
+
         print(
             f"Number of columns BEFORE dropping columns with > {self.NANS_THRESHOLD}% nan values: {len(X.columns)}"
         )
-
-        # TODO: discuss whether we should drop recordid or not
-        X = X.drop("recordid", axis=1)
 
         X = X.drop(
             self.features_to_drop,
@@ -93,15 +125,18 @@ class Preprocessor:
             f"Number of columns AFTER dropping columns with > {self.NANS_THRESHOLD}% nan values: {len(X.columns)}"
         )
 
-        X.fillna(X.mean(), inplace=True)
+        X.fillna(X.median(), inplace=True)
         print(
             f"Are there left any columns with nan values? - {any((X.isna().sum() * 100) / len(X) > 0)}"
         )
 
+        X = self.__drop_features_with_lasso(X, y, is_train)
+
+
         return X, y
 
     def __set_features_to_drop(self, X):
-        nans_percentage = (X.isna().sum() * 100) / len(X)
+        nans_percentage = ((X.isna().sum() * 100) / len(X)).sort_values(ascending=False)
         columns_with_nans_statistics = pd.DataFrame(
             {"columns": X.columns, "nans_percentage": nans_percentage}
         )
@@ -119,7 +154,8 @@ class Preprocessor:
 
         self.features_to_drop = columns_with_nans_statistics[
             columns_with_nans_statistics["nans_percentage"] > self.NANS_THRESHOLD
-        ]["columns"]
+        ]["columns"].to_numpy()
+
 
     def __set_scaler(self, X):
         self.scaler = MinMaxScaler()
@@ -180,6 +216,55 @@ class Preprocessor:
         # todo: make this features v
         self.features_permutation = forest_importances[forest_importances > 0.0]
         print(len(self.features_permutation))
+
+    def __drop_features_with_lasso(self, X, y, is_train=False):
+        # lasso = Lasso(random_state=self.random_state)
+        # params = {
+        #     "alpha": [
+        #         1e-5,
+        #         1e-4,
+        #         1e-3,
+        #         1e-2,
+        #         0.1,
+        #         0.2,
+        #         0.3,
+        #         0.4,
+        #         0.5,
+        #         1,
+        #         2,
+        #         3,
+        #         4,
+        #         5,
+        #         10,
+        #         20,
+        #         30,
+        #         40,
+        #         50,
+        #         100,
+        #         200,
+        #         300,
+        #         400,
+        #         500,
+        #     ]
+        # }
+        # Regressor = GridSearchCV(lasso, params, scoring="neg_mean_squared_error", cv=10)
+        # Regressor.fit(self.X_train, self.y_train)
+        # print("best parameter: ", Regressor.best_params_)
+        # print("best score: ", -Regressor.best_score_)
+
+        if is_train:
+            feature_sel_model = SelectFromModel(
+                Lasso(alpha=0.001, random_state=self.random_state)
+            )
+            feature_sel_model.fit(X, y)
+            # list of the selected features
+            self.lasso_selected_features = X.columns[(feature_sel_model.get_support())]
+
+        # let's print some stats
+        print("total features: {}".format((X.shape[1])))
+        print("selected features: {}".format(len(self.lasso_selected_features)))
+
+        return X[self.lasso_selected_features]
 
 
 preprocessor = Preprocessor()
