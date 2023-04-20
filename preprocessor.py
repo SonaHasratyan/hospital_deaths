@@ -6,14 +6,14 @@ from sklearn.model_selection import train_test_split
 from sklearn.inspection import permutation_importance
 from sklearn.linear_model import Lasso
 from sklearn.feature_selection import SelectFromModel
-from sklearn.model_selection import GridSearchCV
-from sklearn.metrics import (
-    accuracy_score,
-    confusion_matrix,
-    mean_squared_error,
-    mean_absolute_error,
-    r2_score,
-)
+# from sklearn.model_selection import GridSearchCV
+# from sklearn.metrics import (
+#     accuracy_score,
+#     confusion_matrix,
+#     mean_squared_error,
+#     mean_absolute_error,
+#     r2_score,
+# )
 
 # https://scikit-learn.org/stable/auto_examples/ensemble/plot_forest_importances.html
 from sklearn.ensemble import RandomForestClassifier
@@ -95,23 +95,8 @@ class Preprocessor:
         setting X, y
         """
 
-        # supposed that weight and height are not correlated with any of other features, so fill Nan
-        # values of them with random values from corresponding ranges
-        #
-        X["Weight"] = X["Weight"].fillna(
-            pd.Series(np.random.randint(50, 100, size=len(X)))
-        )
-        # X['Weight_last'] = X['Weight_last'].fillna(pd.Series(np.random.randint(50, 100, size=len(X))))
-
         # anomaly detection
         X["Height"] = X["Height"].replace(X["Height"][X["Height"] > 250].index, np.nan)
-        X["Height"] = X["Height"].fillna(
-            pd.Series(np.random.randint(100, 210, size=len(X)))
-        )
-        # a few Nan values ...
-        X["Gender"] = X["Gender"].apply(
-            lambda x: np.random.choice([1, 0], p=[0.5, 0.5]) if pd.isnull(x) else x
-        )
 
         print(
             f"Number of columns BEFORE dropping columns with > {self.NANS_THRESHOLD}% nan values: {len(X.columns)}"
@@ -131,7 +116,6 @@ class Preprocessor:
         )
 
         X = self.__drop_features_with_lasso(X, y, is_train)
-
 
         return X, y
 
