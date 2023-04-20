@@ -187,7 +187,9 @@ class Preprocessor:
                     500,
                 ]
             }
-            Regressor = GridSearchCV(lasso, params, scoring="neg_mean_squared_error", cv=10)
+            Regressor = GridSearchCV(
+                lasso, params, scoring="neg_mean_squared_error", cv=10
+            )
             Regressor.fit(X_tmp, self.y_train)
             print("best parameter: ", Regressor.best_params_)
             print("best score: ", -Regressor.best_score_)

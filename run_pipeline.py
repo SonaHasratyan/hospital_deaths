@@ -19,7 +19,7 @@ from preprocessor import Preprocessor
 
 class Pipeline:
     """
-       Has a run method.
+    Has a run method.
     """
 
     def __init__(self):
@@ -33,9 +33,7 @@ class Pipeline:
 
             y = df["In-hospital_death"]
             X = df.drop("In-hospital_death", axis=1)
-            X, y = shuffle(
-                X, y, random_state=self.random_state
-            )
+            X, y = shuffle(X, y, random_state=self.random_state)
 
             X_train, X_test, y_train, y_test = train_test_split(
                 X,
@@ -46,17 +44,19 @@ class Pipeline:
             )
 
             # todo: close do_validation
-            preprocessor = Preprocessor(random_state=self.random_state, do_validation=True)
+            preprocessor = Preprocessor(
+                random_state=self.random_state, do_validation=True
+            )
             preprocessor.fit(X_train, y_train)
             X_test = preprocessor.transform(X_test)
 
 
-# if called for testing, the class would not be fitted. You need to handle this somehow, so testing works properly. 
-# For example, consider saving trainer and preprocessor after being fit and send us also saved versions of them after 
+# if called for testing, the class would not be fitted. You need to handle this somehow, so testing works properly.
+# For example, consider saving trainer and preprocessor after being fit and send us also saved versions of them after
 # your final train, so your final result can be repeated without training.
 
-# if run_pipeline.py is run without --inference argument, data in --data_path will include both features and a label, 
-# if it is run with --inference argument it will not include the label. However, we would also like to test the model 
+# if run_pipeline.py is run without --inference argument, data in --data_path will include both features and a label,
+# if it is run with --inference argument it will not include the label. However, we would also like to test the model
 # we fit during the check, so you need to also save model and preprocessor in training mode.
 
 
