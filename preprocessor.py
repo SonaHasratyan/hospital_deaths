@@ -1,12 +1,11 @@
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 from sklearn.preprocessing import MinMaxScaler
+from sklearn.utils import shuffle
 from sklearn.model_selection import train_test_split
-from sklearn.inspection import permutation_importance
 from sklearn.linear_model import Lasso
 from sklearn.feature_selection import SelectFromModel
-# from sklearn.model_selection import GridSearchCV
+
 # from sklearn.metrics import (
 #     accuracy_score,
 #     confusion_matrix,
@@ -14,9 +13,6 @@ from sklearn.feature_selection import SelectFromModel
 #     mean_absolute_error,
 #     r2_score,
 # )
-
-# https://scikit-learn.org/stable/auto_examples/ensemble/plot_forest_importances.html
-from sklearn.ensemble import RandomForestClassifier
 
 
 # import pickle
@@ -29,228 +25,180 @@ class Preprocessor:
 
     NANS_THRESHOLD = 60
 
-    def __init__(self):
-        self.X = None
-        self.y = None
+    def __init__(self, random_state=78):
         self.X_train = None
-        self.X_val = None
         self.y_train = None
-        self.y_val = None
-        self.features_to_drop = None
+        self.X = None
+        self.selected_features = None
         self.scaler = None
-        self.features = None
-        self.lasso_selected_features = None
 
-        self.random_state = 78
+        self.random_state = random_state
 
-    def fit(self):
-        df = pd.read_csv("hospital_deaths_train.csv")
+    # TODO: KNNImputer instead of median
 
+    def fit(self, X_train, y_train):
         # Just in case checking whether there are any data points with nan labels, if so, remove them
-        if df["In-hospital_death"].isna().sum() != 0:
-            df.dropna(subset=["In-hospital_death"], inplace=True)
+        if y_train.isna().sum() != 0:
+            y_train.drop(y_train.isna(), inplace=True)
+            X_train.drop(y_train.isna(), inplace=True)
 
-        self.y = df["In-hospital_death"]
-        self.X = df.drop("In-hospital_death", axis=1)
-
-        # todo: the train test separation should come from run file
-        self.X_train, self.X_val, self.y_train, self.y_val = train_test_split(
-            self.X,
-            self.y,
-            test_size=0.2,
-            random_state=self.random_state,
-            stratify=self.y,
+        self.X_train, self.y_train = shuffle(
+            X_train, y_train, random_state=self.random_state
         )
 
-        self.__set_features_to_drop(self.X_train)
+        self.__anomaly_detection()
 
-    def transform(self):
-        self.X_train, self.y_train = self.__regularize_data(self.X_train, self.y_train, is_train=True)
-        self.X_val, self.y_val = self.__regularize_data(self.X_val, self.y_val)
-
-        # todo: move to model
-        # self.__feature_selection_mdi()
-        # self.__feature_selection_permutation()
-        # print(
-        #     set(self.features_mdi.keys()).intersection(
-        #         set(self.features_permutation.keys())
-        #     )
-        # )
-
-        self.X_train, self.y_train = self.X_train.values, self.y_train.values
-        self.X_val, self.y_val = self.X_val.values, self.y_val.values
-
-        self.__anomaly_detection(self.X_train)
-
-        # scaler can't be set in fit method cos' we are dropping some features in transform set
-        self.__set_scaler(self.X_train)
-        self.X_train = self.scaler.transform(self.X_train)
-        self.X_val = self.scaler.transform(self.X_val)
-
-    def __regularize_data(self, X, y, is_train=False):
-        """
-        removing data points which have nan labels
-        removing those columns which include over NANS_THRESHOLD % nans
-        filling nans
-        setting X, y
-        """
-
-        # anomaly detection
-        X["Height"] = X["Height"].replace(X["Height"][X["Height"] > 250].index, np.nan)
-
-        print(
-            f"Number of columns BEFORE dropping columns with > {self.NANS_THRESHOLD}% nan values: {len(X.columns)}"
+        self.scaler = MinMaxScaler()
+        self.scaler.fit(self.X_train)
+        self.X_train[self.X_train.columns] = self.scaler.transform(
+            self.X_train[self.X_train.columns]
         )
 
-        X = X.drop(
-            self.features_to_drop,
-            axis=1,
-        )
-        print(
-            f"Number of columns AFTER dropping columns with > {self.NANS_THRESHOLD}% nan values: {len(X.columns)}"
-        )
+        self.__select_features()
+
+    def transform(self, X):
+        self.X = X
+        # TODO discuss: if any extra column should we drop?
+
+        self.X[self.X.columns] = self.scaler.transform(self.X[self.X.columns])
+        self.X = self.__regularize_data(self.X)
+
+        # TODO take .values if needed v
+        # self.X = self.X.values
+
+    def __regularize_data(self, X):
+
+        print(f"Number of columns BEFORE dropping: {len(X.columns)}")
+        X = X[self.selected_features].copy()
+
+        print(f"Number of columns AFTER dropping: {len(X.columns)}")
 
         X.fillna(X.median(), inplace=True)
         print(
             f"Are there left any columns with nan values? - {any((X.isna().sum() * 100) / len(X) > 0)}"
         )
 
-        X = self.__drop_features_with_lasso(X, y, is_train)
+        return X
 
-        return X, y
+    def __select_features(self):
+        """
+        removing those columns which include over NANS_THRESHOLD % nans
+        filling nans
+        setting self.select_features
+        """
 
-    def __set_features_to_drop(self, X):
-        nans_percentage = ((X.isna().sum() * 100) / len(X)).sort_values(ascending=False)
-        columns_with_nans_statistics = pd.DataFrame(
-            {"columns": X.columns, "nans_percentage": nans_percentage}
+        nans_percentage = (
+            (self.X_train.isna().sum() * 100) / len(self.X_train)
+        ).sort_values(ascending=False)
+        cols_with_nans_stats = pd.DataFrame(
+            {"columns": self.X_train.columns, "nans_percentage": nans_percentage}
         )
-        columns_with_nans_statistics.sort_values("nans_percentage", inplace=True)
+        cols_with_nans_stats.sort_values("nans_percentage", inplace=True)
 
         print(
             f"Number of columns including nans: "
-            f'{len(columns_with_nans_statistics[columns_with_nans_statistics["nans_percentage"] > 0])}'
+            f'{len(cols_with_nans_stats[cols_with_nans_stats["nans_percentage"] > 0])}'
         )
-        # print(
-        #     columns_with_nans_statistics[
-        #         columns_with_nans_statistics["nans_percentage"] > self.NANS_THRESHOLD
-        #     ]["columns"]
-        # )
 
-        self.features_to_drop = columns_with_nans_statistics[
-            columns_with_nans_statistics["nans_percentage"] > self.NANS_THRESHOLD
+        features_to_drop = cols_with_nans_stats[
+            cols_with_nans_stats["nans_percentage"] > self.NANS_THRESHOLD
         ]["columns"].to_numpy()
 
-
-    def __set_scaler(self, X):
-        self.scaler = MinMaxScaler()
-        self.scaler.fit(X)
-
-    def __anomaly_detection(self, X_train):
-        # TODO
-        pass
-
-    def __feature_selection_mdi(self):
-        rf = RandomForestClassifier(random_state=self.random_state)
-        rf.fit(self.X_train, self.y_train)
-
-        forest_importances = pd.Series(
-            rf.feature_importances_, index=self.X_train.columns
+        print(
+            f"Number of columns with > {self.NANS_THRESHOLD}% nan values: {len(features_to_drop)}"
         )
-        std = np.std([tree.feature_importances_ for tree in rf.estimators_], axis=0)
 
-        print(forest_importances.sort_values())
-        fig, ax = plt.subplots()
-        forest_importances[forest_importances <= 0.009].plot.bar(
-            yerr=std[forest_importances <= 0.009], ax=ax
+        X_tmp = self.X_train[self.X_train.columns.difference(features_to_drop)].copy()
+        X_tmp.fillna(X_tmp.median(), inplace=True)
+
+        alpha = self.__get_lasso_alpha(X_tmp)
+
+        feature_sel_model = SelectFromModel(
+            Lasso(alpha=alpha, random_state=self.random_state)
         )
-        ax.set_title("Feature importances using MDI")
-        ax.set_ylabel("Mean decrease in impurity")
-        fig.tight_layout()
-        fig.show()
 
-        # todo: make this features v
-        self.features_mdi = forest_importances[forest_importances > 0.009]
-        print(len(self.features_mdi))
+        feature_sel_model.fit(X_tmp, self.y_train)
 
-    def __feature_selection_permutation(self):
-        rf = RandomForestClassifier(random_state=self.random_state)
-        rf.fit(self.X_train, self.y_train)
-
-        permutation = permutation_importance(
-            rf,
-            self.X_val,
-            self.y_val,
-            n_repeats=10,
-            random_state=self.random_state,
-            n_jobs=2,
-        )
-        forest_importances = pd.Series(
-            permutation.importances_mean, index=self.X_val.columns
-        )
-        print(forest_importances.sort_values())
-        fig, ax = plt.subplots()
-        forest_importances[forest_importances <= 0.0].plot.bar(
-            yerr=permutation.importances_std[forest_importances <= 0.0], ax=ax
-        )
-        ax.set_title("Feature importances using MDI")
-        ax.set_ylabel("Mean decrease in impurity")
-        fig.tight_layout()
-        fig.show()
-
-        # todo: make this features v
-        self.features_permutation = forest_importances[forest_importances > 0.0]
-        print(len(self.features_permutation))
-
-    def __drop_features_with_lasso(self, X, y, is_train=False):
-        # lasso = Lasso(random_state=self.random_state)
-        # params = {
-        #     "alpha": [
-        #         1e-5,
-        #         1e-4,
-        #         1e-3,
-        #         1e-2,
-        #         0.1,
-        #         0.2,
-        #         0.3,
-        #         0.4,
-        #         0.5,
-        #         1,
-        #         2,
-        #         3,
-        #         4,
-        #         5,
-        #         10,
-        #         20,
-        #         30,
-        #         40,
-        #         50,
-        #         100,
-        #         200,
-        #         300,
-        #         400,
-        #         500,
-        #     ]
-        # }
-        # Regressor = GridSearchCV(lasso, params, scoring="neg_mean_squared_error", cv=10)
-        # Regressor.fit(self.X_train, self.y_train)
-        # print("best parameter: ", Regressor.best_params_)
-        # print("best score: ", -Regressor.best_score_)
-
-        if is_train:
-            feature_sel_model = SelectFromModel(
-                Lasso(alpha=0.001, random_state=self.random_state)
-            )
-            feature_sel_model.fit(X, y)
-            # list of the selected features
-            self.lasso_selected_features = X.columns[(feature_sel_model.get_support())]
+        # list of the selected features
+        self.selected_features = X_tmp.columns[(feature_sel_model.get_support())]
 
         # let's print some stats
-        print("total features: {}".format((X.shape[1])))
-        print("selected features: {}".format(len(self.lasso_selected_features)))
+        print(f"#Total features: {self.X_train.shape[1]}")
+        print(f"#Selected features: {len(self.selected_features)}")
 
-        return X[self.lasso_selected_features]
+    def __anomaly_detection(self):
+        # TODO: validate quantiles
+        # Identify potential outliers for each column
+        outliers = {}
+        for col in self.X_train.columns:
+            # print(self.X_train[col].describe())
+            q1 = self.X_train[col].quantile(0.05)
+            q3 = self.X_train[col].quantile(0.95)
+            iqr = q3 - q1
+            upper_lim = q3 + 1.5 * iqr
+            lower_lim = q1 - 1.5 * iqr
+            outliers[col] = self.X_train.loc[
+                (self.X_train[col] < lower_lim) | (self.X_train[col] > upper_lim), col
+            ]
+            self.X_train.loc[
+                (self.X_train[col] < lower_lim) | (self.X_train[col] > upper_lim), col
+            ] = np.nan
+            # print(self.X_train[col].describe())
+        # print(outliers)
 
+    def __get_lasso_alpha(self, X_tmp, grid_search=False):
+        if grid_search:
+            from sklearn.model_selection import GridSearchCV
+
+            lasso = Lasso(random_state=self.random_state)
+            params = {
+                "alpha": [
+                    1e-5,
+                    1e-4,
+                    1e-3,
+                    1e-2,
+                    0.1,
+                    0.2,
+                    0.3,
+                    0.4,
+                    0.5,
+                    1,
+                    2,
+                    3,
+                    4,
+                    5,
+                    10,
+                    20,
+                    30,
+                    40,
+                    50,
+                    100,
+                    200,
+                    300,
+                    400,
+                    500,
+                ]
+            }
+            Regressor = GridSearchCV(lasso, params, scoring="neg_mean_squared_error", cv=10)
+            Regressor.fit(X_tmp, self.y_train)
+            print("best parameter: ", Regressor.best_params_)
+            print("best score: ", -Regressor.best_score_)
+            return Regressor.best_params_["alpha"]
+        else:
+            return 0.001
+
+
+df = pd.read_csv("hospital_deaths_train.csv")
+y = df["In-hospital_death"]
+X = df.drop("In-hospital_death", axis=1)
+X_train, X_val, y_train, y_val = train_test_split(
+    X,
+    y,
+    test_size=0.2,
+    random_state=78,
+    stratify=y,
+)
 
 preprocessor = Preprocessor()
-preprocessor.fit()
-preprocessor.transform()
+preprocessor.fit(X_train, y_train)
+preprocessor.transform(X_val)
