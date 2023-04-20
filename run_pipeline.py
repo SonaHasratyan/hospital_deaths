@@ -1,7 +1,8 @@
 import pandas as pd
 import argparse
 from sklearn.model_selection import train_test_split
-
+from sklearn.utils import shuffle
+from preprocessor import Preprocessor
 
 """
     This file can have 2 arguments.
@@ -25,26 +26,29 @@ class Pipeline:
         self.random_state = 78
 
     def run(self, data_path, inference):
-        is_train = False
-
-        if inference == "train":
-            is_train = True
 
         df = pd.read_csv(data_path)
 
-        if is_train:
+        if inference == "train":
 
             y = df["In-hospital_death"]
             X = df.drop("In-hospital_death", axis=1)
-            # todo: shuffle
-            # todo: the train test separation should come from run file
-            X_train, X_val, y_train, y_val = train_test_split(
+            X, y = shuffle(
+                X, y, random_state=self.random_state
+            )
+
+            X_train, X_test, y_train, y_test = train_test_split(
                 X,
                 y,
                 test_size=0.2,
                 random_state=self.random_state,
                 stratify=y,
             )
+
+            # todo: close do_validation
+            preprocessor = Preprocessor(random_state=self.random_state, do_validation=True)
+            preprocessor.fit(X_train, y_train)
+            X_test = preprocessor.transform(X_test)
 
 
 # if called for testing, the class would not be fitted. You need to handle this somehow, so testing works properly. 

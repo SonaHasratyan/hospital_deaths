@@ -1,7 +1,6 @@
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
-from sklearn.utils import shuffle
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import Lasso
 from sklearn.feature_selection import SelectFromModel
@@ -25,7 +24,8 @@ class Preprocessor:
 
     NANS_THRESHOLD = 60
 
-    def __init__(self, random_state=78):
+    def __init__(self, random_state=78, do_validation=False):
+        self.do_validation = do_validation
         self.X_train = None
         self.y_train = None
         self.X = None
@@ -37,14 +37,22 @@ class Preprocessor:
     # TODO: KNNImputer instead of median
 
     def fit(self, X_train, y_train):
+
         # Just in case checking whether there are any data points with nan labels, if so, remove them
         if y_train.isna().sum() != 0:
             y_train.drop(y_train.isna(), inplace=True)
             X_train.drop(y_train.isna(), inplace=True)
 
-        self.X_train, self.y_train = shuffle(
-            X_train, y_train, random_state=self.random_state
-        )
+        if self.do_validation:
+            X_train, X_val, y_train, y_val = train_test_split(
+                X_train,
+                y_train,
+                test_size=0.15,
+                random_state=self.random_state,
+                stratify=y_train,
+            )
+
+        self.X_train, self.y_train = X_train, y_train
 
         self.__anomaly_detection()
 
@@ -188,17 +196,17 @@ class Preprocessor:
             return 0.001
 
 
-df = pd.read_csv("hospital_deaths_train.csv")
-y = df["In-hospital_death"]
-X = df.drop("In-hospital_death", axis=1)
-X_train, X_val, y_train, y_val = train_test_split(
-    X,
-    y,
-    test_size=0.2,
-    random_state=78,
-    stratify=y,
-)
-
-preprocessor = Preprocessor()
-preprocessor.fit(X_train, y_train)
-preprocessor.transform(X_val)
+# df = pd.read_csv("hospital_deaths_train.csv")
+# y = df["In-hospital_death"]
+# X = df.drop("In-hospital_death", axis=1)
+# X_train, X_val, y_train, y_val = train_test_split(
+#     X,
+#     y,
+#     test_size=0.2,
+#     random_state=78,
+#     stratify=y,
+# )
+#
+# preprocessor = Preprocessor()
+# preprocessor.fit(X_train, y_train)
+# preprocessor.transform(X_val)
