@@ -3,6 +3,9 @@ import argparse
 from sklearn.model_selection import train_test_split
 from sklearn.utils import shuffle
 from preprocessor import Preprocessor
+from model import Model
+import json
+
 
 """
     This file can have 2 arguments.
@@ -23,14 +26,15 @@ class Pipeline:
     """
 
     def __init__(self):
+        self.preprocessor = None
+        self.model = None
+        self.threshold = 0.5
         self.random_state = 78
 
     def run(self, data_path, inference):
-
         df = pd.read_csv(data_path)
 
         if inference == "train":
-
             y = df["In-hospital_death"]
             X = df.drop("In-hospital_death", axis=1)
             X, y = shuffle(X, y, random_state=self.random_state)
@@ -44,11 +48,42 @@ class Pipeline:
             )
 
             # todo: close do_validation
-            preprocessor = Preprocessor(
-                random_state=self.random_state, do_validation=True
+            self.preprocessor = Preprocessor(
+                random_state=self.random_state, do_validation=False
             )
-            preprocessor.fit(X_train, y_train)
-            X_test = preprocessor.transform(X_test)
+            self.preprocessor.fit(X_train, y_train)
+            X_train = self.preprocessor.transform(X_train)  # .to_numpy()
+            y_train = y_train  # .to_numpy()
+            X_test = self.preprocessor.transform(X_test)  # .to_numpy()
+            self.model = Model(random_state=self.random_state, do_validation=False)
+            self.model.fit(X_train, y_train)
+            y_pred = self.model.predict(X_test)
+            self.model.score(X_test, y_test)
+
+        else:
+            # todo: self.threshold - get from validation
+            #       maybe auc/ruc for the threshold
+
+            X_test = self.preprocessor.transform(df)  # .to_numpy()
+            y_pred = self.model.predict(X_test)
+
+            # Create a dictionary with the data to save
+            data = {"predict_probas": y_pred, "threshold": self.threshold}
+
+            # Open the JSON file in write mode and write the data to it
+            with open("predictions.json", "w") as outfile:
+                json.dump(data, outfile)
+
+            # Load the existing data from the file
+            with open("predictions.json", "r") as infile:
+                data = json.load(infile)
+
+            print(data)
+
+            # if predict_probas > threshold:
+            #     predict_probas = 1
+            # else:
+            #     predict_probas = 0
 
 
 # if called for testing, the class would not be fitted. You need to handle this somehow, so testing works properly.
@@ -61,7 +96,6 @@ class Pipeline:
 
 
 parser = argparse.ArgumentParser()
-
 
 parser.add_argument("--data_path", type=str, required=True)
 parser.add_argument("--inference", type=str, required=False, default="train")

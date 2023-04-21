@@ -5,14 +5,6 @@ from sklearn.model_selection import train_test_split
 from sklearn.linear_model import Lasso
 from sklearn.feature_selection import SelectFromModel
 
-# from sklearn.metrics import (
-#     accuracy_score,
-#     confusion_matrix,
-#     mean_squared_error,
-#     mean_absolute_error,
-#     r2_score,
-# )
-
 
 # import pickle
 
@@ -28,7 +20,7 @@ class Preprocessor:
         self.do_validation = do_validation
         self.X_train = None
         self.y_train = None
-        self.X = None
+        self.X_test = None
         self.selected_features = None
         self.scaler = None
 
@@ -64,15 +56,19 @@ class Preprocessor:
 
         self.__select_features()
 
-    def transform(self, X):
-        self.X = X
+    def transform(self, X_test):
+        self.X_test = X_test
         # TODO discuss: if any extra column should we drop?
 
-        self.X[self.X.columns] = self.scaler.transform(self.X[self.X.columns])
-        self.X = self.__regularize_data(self.X)
+        self.X_test[self.X_test.columns] = self.scaler.transform(
+            self.X_test[self.X_test.columns]
+        )
+        self.X_test = self.__regularize_data(self.X_test)
 
         # TODO take .values if needed v
-        # self.X = self.X.values
+        # self.X_test = self.X_test.values
+
+        return self.X_test
 
     def __regularize_data(self, X):
 
