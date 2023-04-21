@@ -55,7 +55,7 @@ class Pipeline:
             X_train = self.preprocessor.transform(X_train)  # .to_numpy()
             y_train = y_train  # .to_numpy()
             X_test = self.preprocessor.transform(X_test)  # .to_numpy()
-            self.model = Model(random_state=self.random_state, do_validation=False)
+            self.model = Model(random_state=self.random_state, do_validation=True)
             self.model.fit(X_train, y_train)
             y_pred = self.model.predict(X_test)
             self.model.score(X_test, y_test)

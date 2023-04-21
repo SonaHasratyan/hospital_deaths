@@ -3,15 +3,13 @@ import pandas as pd
 
 # https://scikit-learn.org/stable/auto_examples/ensemble/plot_forest_importances.html
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
 
-import matplotlib.pyplot as plt
-from sklearn.inspection import permutation_importance
 from sklearn.metrics import (
     accuracy_score,
     confusion_matrix,
-    mean_squared_error,
-    mean_absolute_error,
-    r2_score,
+    roc_curve,
+    roc_auc_score,
 )
 from sklearn.model_selection import GridSearchCV
 from sklearn.linear_model import LogisticRegression
@@ -25,7 +23,7 @@ from sklearn.tree import DecisionTreeClassifier
 from sklearn.svm import SVC
 from sklearn.metrics import precision_recall_fscore_support
 from sklearn.ensemble import BaggingClassifier
-
+from matplotlib import pyplot
 
 class Model:
     """
@@ -33,7 +31,11 @@ class Model:
     It is considered, that the input is already preprocessed here.
     """
 
-    def __init__(self, random_state=78, do_validation=False):
+    def __init__(self, random_state=78, do_validation=True):
+        self.threshold = None
+        self.y_val = None
+        self.X_val = None
+        self.y_test = None
         self.do_validation = do_validation
         self.X_train = None
         self.y_train = None
@@ -42,137 +44,90 @@ class Model:
         self.features_mdi = None
         self.random_state = random_state
         self.model = None
-        # todo: delete v
-        # self.selected_features = None
 
     def fit(self, X_train, y_train):
+        if self.do_validation:
+            X_train, X_val, y_train, y_val = train_test_split(
+                X_train,
+                y_train,
+                test_size=0.15,
+                random_state=self.random_state,
+                stratify=y_train,
+            )
+            self.X_val = X_val
+            self.y_val = y_val
+
         self.X_train = X_train
         self.y_train = y_train
 
-        self.model = self.__choose_model()
+        self.choose_model()
         self.model.fit(self.X_train, self.y_train)
-
-        # self.__feature_selection_mdi()
-        # self.__feature_selection_permutation()
-        # self.selected_features = self.features_mdi.keys()
-        # self.X_train = self.X_train[self.selected_features]
-
-        self.model.fit(self.X_train, self.y_train)
+        self.threshold_selection()
 
     def predict(self, X_test):
-        # self.X_test = X_test[self.selected_features]
         self.X_test = X_test
         y_pred = self.model.predict(self.X_test)
 
         return y_pred
 
     def score(self, X_test, y_test):
-        # X_test = X_test[self.selected_features]
-        y_pred = self.predict(X_test)
         self.X_test = X_test
         self.y_test = y_test
+        y_pred = (self.model.predict_proba(self.X_test)[:, 1] >= self.threshold).astype(bool)
 
         print(f"Train accuracy: {self.model.score(self.X_train, self.y_train)}")
-        print(f"Test accuracy: {accuracy_score(y_test, y_pred)}")
-        print(f"confusion_matrix: {confusion_matrix(y_test, y_pred)}")
-        print(
-            f"mean_squared_error: {mean_squared_error(y_test, y_pred, squared=False)}"
-        )
-        print(f"mean_absolute_error: {mean_absolute_error(y_test, y_pred)}")
-        print(f"r2_score: {r2_score(y_test, y_pred)}")
+        print(f"Test accuracy: {accuracy_score(self.y_test, y_pred)}")
+        print(f"confusion_matrix: {confusion_matrix(self.y_test, y_pred)}")
 
-    def __feature_selection_mdi(self):
-        forest_importances = pd.Series(
-            self.model.feature_importances_, index=self.X_train.columns
-        )
-        std = np.std(
-            [tree.feature_importances_ for tree in self.model.estimators_], axis=0
-        )
-
-        print(forest_importances.sort_values())
-        fig, ax = plt.subplots()
-        forest_importances.plot.bar(yerr=std, ax=ax)
-        ax.set_title("Feature importances using MDI")
-        ax.set_ylabel("Mean decrease in impurity")
-        fig.tight_layout()
-        fig.show()
-
-        self.features_mdi = forest_importances[forest_importances > 0.008]
-        print(len(self.features_mdi))
-
-    def __feature_selection_permutation(self):
-        permutation = permutation_importance(
-            self.model,
-            self.X_train,
-            self.y_train,
-            n_repeats=10,
-            random_state=self.random_state,
-            n_jobs=2,
-        )
-        forest_importances = pd.Series(
-            permutation.importances_mean, index=self.X_train.columns
-        )
-        print(forest_importances.sort_values())
-        fig, ax = plt.subplots()
-        forest_importances.plot.bar(yerr=permutation.importances_std, ax=ax)
-        ax.set_title("Feature importances using Permutation")
-        ax.set_ylabel("Mean decrease in impurity")
-        fig.tight_layout()
-        fig.show()
-
-        self.features_permutation = forest_importances[forest_importances > 0.0]
-        print(len(self.features_permutation))
-
-    def choose_model(self, X_train, y_train, X_test, y_test):
+    def choose_model(self):
         rf = RandomForestClassifier(
             max_depth=5,
             criterion="gini",
             max_leaf_nodes=14,
             random_state=self.random_state,
         )
-        _model = rf
-        bg = BaggingClassifier(_model, n_estimators=20, oob_score=True)
-        bg.fit(X_train, y_train)
-        y_pred = bg.predict(X_test)
-        accuracy = accuracy_score(y_test, y_pred)
 
-        print("Accuracy:", accuracy)
-        print('Training accuracy: ', bg.score(X_train, y_train))
-        print('Test accuracy: ', bg.score(X_test, y_test))
-        print("OOB Score: ", bg.oob_score_)
+        knn = KNeighborsClassifier(n_neighbors=8)
 
-        models = [
-            KNeighborsClassifier(),
-            DecisionTreeClassifier(),
-            LogisticRegression(),
-        ]
+        dt = DecisionTreeClassifier(max_depth=5,
+            criterion="gini",
+            max_leaf_nodes=14)
 
-        for model in models:
-            if model == KNeighborsClassifier():
-                param_grid = {"n_neighbors": range(1, 10)}
-            elif model == DecisionTreeClassifier():
-                param_grid = {
-                    "criterion": ["gini", "entropy"],
-                    "max_depth": [4, 5, 6, 7, 8, 10, 12, 13, 14, 15],
-                }
-            elif model == LogisticRegression():
-                param_grid = {"C": [0.01, 0.05, 0.1, 0.15, 0.2, 0.5, 1, 2, 4, 5]}
+        self.model = knn
 
-            _model = GridSearchCV(model, param_grid=param_grid, cv=5)
-            _model.fit(X_train, y_train)
-            bg = BaggingClassifier(_model, n_estimators=20, oob_score=True)
-            bg.fit(X_train, y_train)
-            y_pred = bg.predict(X_test)
-            accuracy = accuracy_score(y_test, y_pred)
-            print(
-                "Best hyperparameters for model {}: {}".format(
-                    model.__class__.__name__, _model.best_params_
-                )
-            )
-            print("Accuracy:", accuracy)
+        params = {
+            "n_neighbors": [
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7,
+                8,
+                9
+            ]
+        }
 
-            print('Training accuracy: ', bg.score(X_train, y_train))
-            print('Test accuracy: ', bg.score(X_test, y_test))
-            print("OOB Score: ", bg.oob_score_)
+        # Regressor = GridSearchCV(self.model, params, scoring="neg_mean_squared_error", cv=5)
+        # Regressor.fit(self.X_train, self.y_train)
+        # print(Regressor.best_params_)
 
-        return rf
+    def threshold_selection(self):
+        predict_probas = self.model.predict_proba(self.X_val)
+        predict_probas = predict_probas[:, 1]
+
+        auc = roc_auc_score(self.y_val, predict_probas)
+        print("ROC AUC=%.3f" % auc)
+
+        fpr, tpr, thresholds = roc_curve(self.y_val, predict_probas)
+        print(thresholds)
+
+        J = tpr - fpr
+        ix = np.argmax(J)
+        print("Best Threshold=%f" % thresholds[ix])
+        self.threshold = thresholds[ix]
+        pyplot.plot(fpr, tpr, marker='.')
+        pyplot.xlabel('False Positive Rate')
+        pyplot.ylabel('True Positive Rate')
+        # pyplot.show()
