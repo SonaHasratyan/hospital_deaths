@@ -14,6 +14,17 @@ from sklearn.metrics import (
     r2_score,
 )
 from sklearn.model_selection import GridSearchCV
+from sklearn.linear_model import LogisticRegression
+from sklearn.discriminant_analysis import (
+    LinearDiscriminantAnalysis,
+    QuadraticDiscriminantAnalysis,
+)
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.naive_bayes import GaussianNB
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.svm import SVC
+from sklearn.metrics import precision_recall_fscore_support
+from sklearn.ensemble import BaggingClassifier
 
 
 class Model:
@@ -38,24 +49,15 @@ class Model:
         self.X_train = X_train
         self.y_train = y_train
 
-        rf = RandomForestClassifier(
-            max_depth=5,
-            criterion="gini",
-            max_leaf_nodes=14,
-            random_state=self.random_state,
-        )
+        self.model = self.__choose_model()
+        self.model.fit(self.X_train, self.y_train)
 
-        rf.fit(self.X_train, self.y_train)
-
-        self.model = rf
-
-        self.__feature_selection_mdi()
+        # self.__feature_selection_mdi()
         # self.__feature_selection_permutation()
-
         # self.selected_features = self.features_mdi.keys()
-
         # self.X_train = self.X_train[self.selected_features]
-        rf.fit(self.X_train, self.y_train)
+
+        self.model.fit(self.X_train, self.y_train)
 
     def predict(self, X_test):
         # self.X_test = X_test[self.selected_features]
@@ -67,6 +69,8 @@ class Model:
     def score(self, X_test, y_test):
         # X_test = X_test[self.selected_features]
         y_pred = self.predict(X_test)
+        self.X_test = X_test
+        self.y_test = y_test
 
         print(f"Train accuracy: {self.model.score(self.X_train, self.y_train)}")
         print(f"Test accuracy: {accuracy_score(y_test, y_pred)}")
@@ -118,3 +122,57 @@ class Model:
 
         self.features_permutation = forest_importances[forest_importances > 0.0]
         print(len(self.features_permutation))
+
+    def choose_model(self, X_train, y_train, X_test, y_test):
+        rf = RandomForestClassifier(
+            max_depth=5,
+            criterion="gini",
+            max_leaf_nodes=14,
+            random_state=self.random_state,
+        )
+        _model = rf
+        bg = BaggingClassifier(_model, n_estimators=20, oob_score=True)
+        bg.fit(X_train, y_train)
+        y_pred = bg.predict(X_test)
+        accuracy = accuracy_score(y_test, y_pred)
+
+        print("Accuracy:", accuracy)
+        print('Training accuracy: ', bg.score(X_train, y_train))
+        print('Test accuracy: ', bg.score(X_test, y_test))
+        print("OOB Score: ", bg.oob_score_)
+
+        models = [
+            KNeighborsClassifier(),
+            DecisionTreeClassifier(),
+            LogisticRegression(),
+        ]
+
+        for model in models:
+            if model == KNeighborsClassifier():
+                param_grid = {"n_neighbors": range(1, 10)}
+            elif model == DecisionTreeClassifier():
+                param_grid = {
+                    "criterion": ["gini", "entropy"],
+                    "max_depth": [4, 5, 6, 7, 8, 10, 12, 13, 14, 15],
+                }
+            elif model == LogisticRegression():
+                param_grid = {"C": [0.01, 0.05, 0.1, 0.15, 0.2, 0.5, 1, 2, 4, 5]}
+
+            _model = GridSearchCV(model, param_grid=param_grid, cv=5)
+            _model.fit(X_train, y_train)
+            bg = BaggingClassifier(_model, n_estimators=20, oob_score=True)
+            bg.fit(X_train, y_train)
+            y_pred = bg.predict(X_test)
+            accuracy = accuracy_score(y_test, y_pred)
+            print(
+                "Best hyperparameters for model {}: {}".format(
+                    model.__class__.__name__, _model.best_params_
+                )
+            )
+            print("Accuracy:", accuracy)
+
+            print('Training accuracy: ', bg.score(X_train, y_train))
+            print('Test accuracy: ', bg.score(X_test, y_test))
+            print("OOB Score: ", bg.oob_score_)
+
+        return rf

@@ -59,6 +59,7 @@ class Pipeline:
             self.model.fit(X_train, y_train)
             y_pred = self.model.predict(X_test)
             self.model.score(X_test, y_test)
+            # self.model.choose_model(X_train, y_train, X_test, y_test)
 
         else:
             # todo: self.threshold - get from validation
