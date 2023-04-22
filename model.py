@@ -79,10 +79,17 @@ class Model:
         y_pred = (self.model.predict_proba(self.X_test)[:, 1] >= self.threshold).astype(
             bool
         )
+        cm = confusion_matrix(self.y_test, y_pred)
 
         print(f"Train accuracy: {self.model.score(self.X_train, self.y_train)}")
         print(f"Test accuracy: {accuracy_score(self.y_test, y_pred)}")
         print(f"confusion_matrix: {confusion_matrix(self.y_test, y_pred)}")
+        sensitivity = cm[0, 0] / (cm[0, 0] + cm[1, 0])
+        # calculate the specificity
+        specificity = cm[1, 1] / (cm[1, 1] + cm[0, 1])
+        # print the results
+        print('Sensitivity:', sensitivity)
+        print('Specificity:', specificity)
 
     def choose_model(self):
         rf = RandomForestClassifier(
