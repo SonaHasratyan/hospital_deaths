@@ -58,14 +58,12 @@ class Preprocessor:
 
     def transform(self, X_test):
         self.X_test = X_test
-        # TODO discuss: if any extra column should we drop?
 
         self.X_test[self.X_test.columns] = self.scaler.transform(
             self.X_test[self.X_test.columns]
         )
         self.X_test = self.__regularize_data(self.X_test)
 
-        # TODO take .values if needed v
         # self.X_test = self.X_test.values
 
         return self.X_test
@@ -136,8 +134,8 @@ class Preprocessor:
         outliers = {}
         for col in self.X_train.columns:
             # print(self.X_train[col].describe())
-            q1 = self.X_train[col].quantile(0.05)
-            q3 = self.X_train[col].quantile(0.95)
+            q1 = self.X_train[col].quantile(0.25)
+            q3 = self.X_train[col].quantile(0.75)
             iqr = q3 - q1
             upper_lim = q3 + 1.5 * iqr
             lower_lim = q1 - 1.5 * iqr

@@ -5,6 +5,7 @@ from sklearn.utils import shuffle
 from preprocessor import Preprocessor
 from model import Model
 import json
+import pickle
 
 
 """
@@ -56,35 +57,34 @@ class Pipeline:
             y_train = y_train  # .to_numpy()
             X_test = self.preprocessor.transform(X_test)  # .to_numpy()
             self.model = Model(random_state=self.random_state, do_validation=True)
+            self.threshold = self.model.threshold
+
             self.model.fit(X_train, y_train)
-            y_pred = self.model.predict(X_test)
+            predict_probas = self.model.predict(X_test)
+            # print(predict_probas)
             self.model.score(X_test, y_test)
-            # self.model.choose_model(X_train, y_train, X_test, y_test)
+
+            filename = "preprocessor.sav"
+            pickle.dump(self.preprocessor, open(filename, "wb"))
+
+            filename = "model.sav"
+            pickle.dump(self.model, open(filename, "wb"))
 
         else:
-            # todo: self.threshold - get from validation
-            #       maybe auc/ruc for the threshold
+            self.preprocessor = pickle.load(open("preprocessor.sav", "rb"))
+            self.model = pickle.load(open("model.sav", "rb"))
+            self.threshold = self.model.threshold
 
             X_test = self.preprocessor.transform(df)  # .to_numpy()
-            y_pred = self.model.predict(X_test)
+            predict_probas = self.model.predict(X_test)
+            predict_probas = predict_probas.tolist()
 
             # Create a dictionary with the data to save
-            data = {"predict_probas": y_pred, "threshold": self.threshold}
+            data = {"predict_probas": predict_probas, "threshold": self.threshold}
 
             # Open the JSON file in write mode and write the data to it
             with open("predictions.json", "w") as outfile:
                 json.dump(data, outfile)
-
-            # Load the existing data from the file
-            with open("predictions.json", "r") as infile:
-                data = json.load(infile)
-
-            print(data)
-
-            # if predict_probas > threshold:
-            #     predict_probas = 1
-            # else:
-            #     predict_probas = 0
 
 
 # if called for testing, the class would not be fitted. You need to handle this somehow, so testing works properly.
