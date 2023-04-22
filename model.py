@@ -36,8 +36,6 @@ class Model:
 
     def __init__(self, random_state=78, do_validation=True):
         self.threshold = None
-        self.y_val = None
-        self.X_val = None
         self.y_test = None
         self.do_validation = do_validation
         self.X_train = None
@@ -54,27 +52,16 @@ class Model:
         self.features_permutation = []
         self.features_mdi = None
         self.random_state = random_state
-        self.model = None
+        self.choose_model()
 
     def fit(self, X_train, y_train):
-        if self.do_validation:
-            X_train, X_val, y_train, y_val = train_test_split(
-                X_train,
-                y_train,
-                test_size=0.15,
-                random_state=self.random_state,
-                stratify=y_train,
-            )
-            self.X_val = X_val
-            self.y_val = y_val
 
-        if len(self.features_permutation):
-            X_train = X_train[self.features_permutation]
+        # if len(self.features_permutation):
+        #     X_train = X_train[self.features_permutation]
+        self.threshold_selection(X_train, y_train)
         self.X_train = X_train
         self.y_train = y_train
-
-        self.choose_model()
-        self.threshold_selection()
+        self.model.fit(self.X_train, self.y_train)
 
     def predict(self, X_test):
         if len(self.features_permutation):
@@ -132,15 +119,14 @@ class Model:
 
         self.model = logistic
 
-        # todo: make False v
         do_grid_search = False
         params = {}
         if self.model == logistic:
             params = {
-                # 'penalty': ['l2', 'elasticnet', 'none'],
-                "C": [18, 20, 22, 25],
-                "tol": [1e-3, 1e-4, 1e-5, 0.9, 0.8, 0.5, 0.1],
-                # 'solver': ['newton-cg', 'lbfgs', 'liblinear', 'sag', 'saga'],
+                'penalty': ['l2', 'elasticnet', 'none'],
+                # "C": [18, 20, 22, 25],
+                "tol": [1e-3, 0.9, 0.1],
+                'solver': ['newton-cg', 'lbfgs', 'liblinear', 'sag', 'saga'],
                 # 'max_iter': [1500],
             }
 
@@ -199,21 +185,29 @@ class Model:
             Regressor.fit(self.X_train, self.y_train)
             print(Regressor.best_params_)
 
-        self.model.fit(self.X_train, self.y_train)
-
         # if self.model == rf:
         #     self.__feature_selection_permutation()
 
-    def threshold_selection(self):
-        if len(self.features_permutation):
-            self.X_val = self.X_val[self.features_permutation]
-        predict_probas = self.model.predict_proba(self.X_val)
+    def threshold_selection(self, X_train, y_train):
+        X_train, X_val, y_train, y_val = train_test_split(
+            X_train,
+            y_train,
+            test_size=0.15,
+            random_state=self.random_state,
+            stratify=y_train,
+        )
+
+        # if len(self.features_permutation):
+        #     X_val = X_val[self.features_permutation]
+
+        self.model.fit(X_train, y_train)
+        predict_probas = self.model.predict_proba(X_val)
         predict_probas = predict_probas[:, 1]
 
-        auc = roc_auc_score(self.y_val, predict_probas)
+        auc = roc_auc_score(y_val, predict_probas)
         print("ROC AUC=%.3f" % auc)
 
-        fpr, tpr, thresholds = roc_curve(self.y_val, predict_probas)
+        fpr, tpr, thresholds = roc_curve(y_val, predict_probas)
         # print(thresholds)
 
         J = tpr - fpr
@@ -224,6 +218,8 @@ class Model:
         pyplot.xlabel("False Positive Rate")
         pyplot.ylabel("True Positive Rate")
         # pyplot.show()
+
+        return self.threshold
 
     def __feature_selection_permutation(self):
         permutation = permutation_importance(

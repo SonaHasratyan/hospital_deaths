@@ -48,7 +48,6 @@ class Pipeline:
                 stratify=y,
             )
 
-            # todo: close do_validation
             self.preprocessor = Preprocessor(
                 random_state=self.random_state, do_validation=False
             )
@@ -56,10 +55,12 @@ class Pipeline:
             X_train = self.preprocessor.transform(X_train)  # .to_numpy()
             y_train = y_train  # .to_numpy()
             X_test = self.preprocessor.transform(X_test)  # .to_numpy()
-            self.model = Model(random_state=self.random_state, do_validation=True)
-            self.threshold = self.model.threshold
+            self.model = Model(random_state=self.random_state)
 
             self.model.fit(X_train, y_train)
+            self.threshold = self.model.threshold
+            print(self.threshold)
+
             predict_probas = self.model.predict(X_test)
             # print(predict_probas)
             self.model.score(X_test, y_test)

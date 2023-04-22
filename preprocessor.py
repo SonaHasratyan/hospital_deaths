@@ -4,9 +4,8 @@ from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import Lasso
 from sklearn.feature_selection import SelectFromModel
+from sklearn.impute import KNNImputer
 
-
-# import pickle
 
 
 class Preprocessor:
@@ -25,8 +24,7 @@ class Preprocessor:
         self.scaler = None
 
         self.random_state = random_state
-
-    # TODO: KNNImputer instead of median
+        self.imputer = KNNImputer(n_neighbors=2)
 
     def fit(self, X_train, y_train):
 
@@ -75,7 +73,8 @@ class Preprocessor:
 
         print(f"Number of columns AFTER dropping: {len(X.columns)}")
 
-        X.fillna(X.median(), inplace=True)
+        X = pd.DataFrame(self.imputer.fit_transform(X), columns=X.columns)
+
         print(
             f"Are there left any columns with nan values? - {any((X.isna().sum() * 100) / len(X) > 0)}"
         )
@@ -111,7 +110,8 @@ class Preprocessor:
         )
 
         X_tmp = self.X_train[self.X_train.columns.difference(features_to_drop)].copy()
-        X_tmp.fillna(X_tmp.median(), inplace=True)
+
+        X_tmp = pd.DataFrame(self.imputer.fit_transform(X_tmp), columns=X_tmp.columns)
 
         alpha = self.__get_lasso_alpha(X_tmp)
 
